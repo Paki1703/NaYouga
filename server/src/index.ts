@@ -54,9 +54,16 @@ app.get('/', (_req, res) => {
   res.json({ ok: true, message: 'На Юга API', health: '/api/health' })
 })
 
-app.listen(env.port, '0.0.0.0', () => {
+const server = app.listen(env.port, '0.0.0.0', () => {
   console.log(`🎮 На Юга API → port ${env.port}`)
   if (isSteamConfigured()) {
     console.log(`🔐 Steam auth → ${env.steamReturnUrl}`)
+  } else {
+    console.warn('⚠️  STEAM_API_KEY не задан — добавьте переменные в Railway → Variables')
   }
+})
+
+server.on('error', (err) => {
+  console.error('Server failed to start:', err)
+  process.exit(1)
 })
