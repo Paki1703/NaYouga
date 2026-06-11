@@ -55,7 +55,7 @@ app.get('/', (_req, res) => {
 })
 
 const server = app.listen(env.port, '0.0.0.0', () => {
-  console.log(`🎮 На Юга API → port ${env.port}`)
+  console.log(`🎮 На Юга API → port ${env.port} (PORT=${process.env.PORT ?? 'not set'})`)
   if (isSteamConfigured()) {
     console.log(`🔐 Steam auth → ${env.steamReturnUrl}`)
   } else {
