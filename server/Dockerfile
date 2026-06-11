@@ -16,5 +16,5 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/dist ./dist
 
-EXPOSE 3000
+# Railway подставляет PORT автоматически (обычно 8080) — слушаем process.env.PORT
 CMD ["node", "dist/index.js"]
