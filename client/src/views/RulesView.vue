@@ -31,7 +31,7 @@ function toggle(id: string) {
 
 <template>
   <div class="mx-auto max-w-3xl px-4 py-10 lg:px-8">
-    <h1 class="section-title">Правила</h1>
+    <h1 class="section-title">ПРАВИЛА СЕРВЕРА</h1>
     <p class="mt-2 text-gray-500">Ознакомьтесь с правилами сервера перед игрой</p>
 
     <div class="relative mt-8">
@@ -48,8 +48,8 @@ function toggle(id: string) {
         <div v-show="openSections.has(section.id)" class="border-t border-white/5 px-5 pb-5">
           <ol class="mt-4 space-y-3">
             <li v-for="(rule, i) in section.rules" :key="rule.id" class="flex gap-3 text-sm text-gray-400">
-              <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent/10 text-xs font-bold text-accent">{{ i + 1 }}</span>
-              {{ rule.text }}
+              <span v-if="!['intro', 'raids', 'admin', 'final'].includes(section.id)" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent/10 text-xs font-bold text-accent">{{ i + 1 }}</span>
+              <div class="prose prose-invert max-w-none" :class="['intro', 'raids', 'admin', 'final'].includes(section.id) ? 'pl-0' : ''" v-html="rule.text"></div>
             </li>
           </ol>
         </div>

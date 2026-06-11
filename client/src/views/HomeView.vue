@@ -45,7 +45,7 @@ onUnmounted(() => serversStore.stopPolling())
 
         <div class="animate-slide-up mt-8 flex flex-wrap gap-3" style="animation-delay:0.3s">
           <a :href="`steam://connect/${SERVER_IP}`" class="btn-primary">Начать играть</a>
-          <a :href="DISCORD_URL" target="_blank" class="btn-ghost">Discord</a>
+          <a :href="DISCORD_URL" target="_blank" class="btn-primary">Discord</a>
           <RouterLink to="/shop" class="btn-ghost">Магазин</RouterLink>
         </div>
 
