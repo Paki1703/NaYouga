@@ -50,8 +50,12 @@ app.get('/api/health', (_req, res) =>
   }),
 )
 
-app.listen(env.port, () => {
-  console.log(`🎮 На Юга API → http://localhost:${env.port}`)
+app.get('/', (_req, res) => {
+  res.json({ ok: true, message: 'На Юга API', health: '/api/health' })
+})
+
+app.listen(env.port, '0.0.0.0', () => {
+  console.log(`🎮 На Юга API → port ${env.port}`)
   if (isSteamConfigured()) {
     console.log(`🔐 Steam auth → ${env.steamReturnUrl}`)
   }

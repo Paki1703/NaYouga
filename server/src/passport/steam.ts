@@ -28,6 +28,15 @@ async function fetchSteamPlayer(steamId: string) {
 }
 
 export function setupPassport() {
+  passport.serializeUser((user: Express.User, done) => {
+    done(null, user.steamId)
+  })
+
+  passport.deserializeUser((steamId: string, done) => {
+    const user = getUser(steamId)
+    done(null, user as Express.User)
+  })
+
   if (!isSteamConfigured()) {
     console.warn('⚠️  STEAM_API_KEY не задан — Steam-авторизация недоступна')
     return
@@ -65,15 +74,6 @@ export function setupPassport() {
       },
     ),
   )
-
-  passport.serializeUser((user: Express.User, done) => {
-    done(null, user.steamId)
-  })
-
-  passport.deserializeUser((steamId: string, done) => {
-    const user = getUser(steamId)
-    done(null, user as Express.User)
-  })
 }
 
 export { passport }
