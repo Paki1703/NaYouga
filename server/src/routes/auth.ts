@@ -6,13 +6,20 @@ import { getOrCreateUser, getUser } from '../store/memory.js'
 const router = Router()
 
 router.get('/me', (req, res) => {
-  const steamId = req.session!.steamId
+  const steamId = req.session!.steamId || (req.user as Express.User | undefined)?.steamId
   if (!steamId) {
     return res.json({ user: null })
   }
   const user = getUser(steamId)
   if (!user) {
-    return res.json({ user: null })
+    // Сессия сохранилась после перезапуска сервера (in-memory store очищен)
+    const recovered = getOrCreateUser(
+      steamId,
+      'Survivor',
+      'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfbeb6b0a0877bcc475630ad407e_full.jpg',
+      env.adminSteamIds.includes(steamId),
+    )
+    return res.json({ user: recovered })
   }
   res.json({ user })
 })
@@ -34,23 +41,30 @@ router.get('/steam/callback', (req, res, next) => {
   passport.authenticate('steam', (err: Error | null, user: Express.User | false | undefined) => {
     if (err || !user) {
       console.error('Steam auth error:', err?.message || 'No user returned')
-      return res.redirect(`${env.clientUrl}/?auth=error`)
+      const reason = err?.message?.includes('STEAM_API_KEY') ? 'invalid_api_key' : 'auth_failed'
+      return res.redirect(`${env.clientUrl}/?auth=error&reason=${reason}`)
     }
 
-    // Сохраняем steamId в session
-    req.session!.steamId = user.steamId
-    req.session!.save((saveErr) => {
-      if (saveErr) {
-        console.error('Session save error:', saveErr.message)
-        return res.redirect(`${env.clientUrl}/?auth=error`)
+    req.login(user, (loginErr) => {
+      if (loginErr) {
+        console.error('Passport login error:', loginErr.message)
+        return res.redirect(`${env.clientUrl}/?auth=error&reason=auth_failed`)
       }
-      // Перенаправляем на профиль - фронтенд автоматически загрузит данные из /api/auth/me
-      res.redirect(`${env.clientUrl}/profile`)
+
+      req.session!.steamId = user.steamId
+      req.session!.save((saveErr) => {
+        if (saveErr) {
+          console.error('Session save error:', saveErr.message)
+          return res.redirect(`${env.clientUrl}/?auth=error&reason=auth_failed`)
+        }
+        res.redirect(`${env.clientUrl}/profile`)
+      })
     })
   })(req, res, next)
 })
 
 router.post('/logout', (req, res) => {
+  delete req.session.steamId
   req.logout((err) => {
     if (err) return res.status(500).json({ error: 'Logout failed' })
     res.json({ ok: true })

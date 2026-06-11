@@ -15,10 +15,15 @@ const router = createRouter({
   scrollBehavior: () => ({ top: 0 }),
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
-  if (to.meta.auth && !auth.user) return '/'
-  if (to.meta.admin && !auth.user?.isAdmin) return '/'
+  if (to.meta.auth || to.meta.admin) {
+    if (!auth.user && !auth.loading) {
+      await auth.fetchUser()
+    }
+    if (to.meta.auth && !auth.user) return '/'
+    if (to.meta.admin && !auth.user?.isAdmin) return '/'
+  }
 })
 
 export default router

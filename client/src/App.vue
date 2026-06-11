@@ -18,7 +18,9 @@ onMounted(async () => {
     authError.value =
       reason === 'steam_not_configured'
         ? 'Steam API Key не настроен на сервере. Добавьте STEAM_API_KEY в server/.env'
-        : 'Не удалось войти через Steam. Попробуйте снова.'
+        : reason === 'invalid_api_key'
+          ? 'Неверный Steam API Key. Получите ключ на steamcommunity.com/dev/apikey'
+          : 'Не удалось войти через Steam. Проверьте STEAM_API_KEY и открывайте сайт по адресу из STEAM_REALM.'
     router.replace({ query: {} })
     setTimeout(() => { authError.value = '' }, 8000)
   }

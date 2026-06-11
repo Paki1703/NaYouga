@@ -15,6 +15,7 @@ setupPassport()
 
 const app = express()
 
+app.set('trust proxy', 1)
 app.use(cors({ origin: env.clientUrl, credentials: true }))
 app.use(express.json())
 app.use(
@@ -26,6 +27,7 @@ app.use(
       secure: env.clientUrl.startsWith('https'),
       httpOnly: true,
       sameSite: 'lax',
+      path: '/',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   }),

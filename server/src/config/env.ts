@@ -9,6 +9,8 @@ export const env = {
   isDev: process.env.NODE_ENV !== 'production',
 }
 
+const PLACEHOLDER_KEYS = new Set(['', 'localhost', 'your_steam_api_key'])
+
 export function isSteamConfigured() {
-  return Boolean(env.steamApiKey)
+  return Boolean(env.steamApiKey) && !PLACEHOLDER_KEYS.has(env.steamApiKey)
 }
