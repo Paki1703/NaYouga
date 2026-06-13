@@ -10,6 +10,7 @@ import serversRoutes from './routes/servers.js'
 import userRoutes from './routes/user.js'
 import adminRoutes from './routes/admin.js'
 import contentRoutes from './routes/content.js'
+import actionLogger from './middleware/logger.js'
 
 setupPassport()
 
@@ -18,6 +19,7 @@ const app = express()
 app.set('trust proxy', 1)
 app.use(cors({ origin: env.clientUrl, credentials: true }))
 app.use(express.json())
+app.use(actionLogger)
 app.use(
   session({
     secret: env.sessionSecret,

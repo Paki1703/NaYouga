@@ -9,6 +9,7 @@ const promocodes = new Map<string, PromoCode>([
   ['VIPTEST', { code: 'VIPTEST', reward: 1000, maxUses: 10, usedCount: 3, active: false }],
 ])
 const adminLogs: AdminLog[] = []
+const actionLogs: AdminLog[] = []
 
 export function getOrCreateUser(steamId: string, nickname: string, avatar: string, isAdmin = false): User {
   let user = users.get(steamId)
@@ -125,6 +126,20 @@ export function getPromocodes(): PromoCode[] {
 
 export function getAdminLogs(): AdminLog[] {
   return adminLogs
+}
+
+export function getActionLogs(): AdminLog[] {
+  return actionLogs
+}
+
+export function addActionLog(userId: string, action: string, details: string) {
+  actionLogs.unshift({ id: uuid(), adminId: userId, action, details, date: new Date().toISOString() })
+}
+
+export function getAllLogs() {
+  const combined = [...adminLogs, ...actionLogs].map((l) => ({ id: l.id, action: l.action, details: l.details, date: l.date }))
+  combined.sort((a, b) => (a.date < b.date ? 1 : -1))
+  return combined
 }
 
 export function addAdminLog(adminId: string, action: string, details: string) {

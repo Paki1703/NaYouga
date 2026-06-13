@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { requireAdmin } from '../middleware/auth.js'
-import { addAdminLog, getAdminLogs, getPromocodes, getSalesStats, giveMoneyToUser } from '../store/memory.js'
+import { addAdminLog, getAdminLogs, getPromocodes, getSalesStats, giveMoneyToUser, getAllLogs } from '../store/memory.js'
 import { products } from '../data/products.js'
 import { news } from '../data/news.js'
 
@@ -12,7 +12,7 @@ router.get('/stats', (_req, res) => {
 })
 
 router.get('/logs', (_req, res) => {
-  res.json({ logs: getAdminLogs() })
+  res.json({ logs: getAllLogs() })
 })
 
 router.get('/promocodes', (_req, res) => {
