@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express'
-import { getUser } from '../store/memory.js'
+import { getUser, isUserBanned } from '../store/memory.js'
 
 declare module 'express-session' {
   interface SessionData {
@@ -16,5 +16,12 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.session.steamId) return res.status(401).json({ error: 'Не авторизован' })
   const user = getUser(req.session.steamId)
   if (!user?.isAdmin) return res.status(403).json({ error: 'Нет доступа' })
+  next()
+}
+
+export function requireNotBanned(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.steamId) return res.status(401).json({ error: 'Не авторизован' })
+  const ban = isUserBanned(req.session.steamId)
+  if (ban.banned) return res.status(403).json({ error: ban.reason || 'Аккаунт заблокирован' })
   next()
 }

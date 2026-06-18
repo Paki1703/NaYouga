@@ -21,10 +21,19 @@ export const env = {
     .map((id) => id.trim())
     .filter(Boolean),
   isDev: process.env.NODE_ENV !== 'production',
+  yookassaShopId: cleanEnv(process.env.YOOKASSA_SHOP_ID),
+  yookassaSecret: cleanEnv(process.env.YOOKASSA_SECRET),
 }
 
 const PLACEHOLDER_KEYS = new Set(['', 'localhost', 'your_steam_api_key'])
+const INSECURE_SECRETS = new Set(['nayouga-dev-secret', 'change-me-in-production', 'change-me', 'secret'])
 
 export function isSteamConfigured() {
   return Boolean(env.steamApiKey) && !PLACEHOLDER_KEYS.has(env.steamApiKey)
+}
+
+export function validateEnv() {
+  if (!env.isDev && INSECURE_SECRETS.has(env.sessionSecret)) {
+    throw new Error('SESSION_SECRET must be set to a strong value in production')
+  }
 }

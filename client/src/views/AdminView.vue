@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { BarChart3, Package, Ticket, Newspaper, ScrollText, Gift } from 'lucide-vue-next'
+import { onMounted, ref, computed } from 'vue'
+import { BarChart3, Package, Ticket, Newspaper, ScrollText, Gift, Users, Search } from 'lucide-vue-next'
 import { api } from '@/api/client'
+import type { User } from '@/types'
 import GlassCard from '@/components/ui/GlassCard.vue'
 
 const tab = ref('stats')
@@ -10,19 +11,24 @@ const logs = ref<{ id: string; action: string; details: string; date: string }[]
 const promocodes = ref<{ code: string; reward: number; usedCount: number; maxUses: number; active: boolean }[]>([])
 const products = ref<{ id: string; name: string; price: number }[]>([])
 
-// Форма выдачи денег
-const moneyForm = ref({
-  steamId: '',
-  amount: 0,
-  reason: '',
+const users = ref<User[]>([])
+const userSearch = ref('')
+const userLoading = ref(false)
+const userMessage = ref('')
+const editingBalance = ref<Record<string, string>>({})
+
+const filteredUsers = computed(() => {
+  const q = userSearch.value.trim().toLowerCase()
+  if (!q) return users.value
+  return users.value.filter((u) =>
+    u.nickname.toLowerCase().includes(q) || u.steamId.includes(q),
+  )
 })
-const moneyLoading = ref(false)
-const moneyMessage = ref('')
 
 const tabs = [
   { id: 'stats', label: 'Статистика', icon: BarChart3 },
+  { id: 'users', label: 'Пользователи', icon: Users },
   { id: 'products', label: 'Товары', icon: Package },
-  { id: 'money', label: 'Выдача денег', icon: Gift },
   { id: 'promos', label: 'Промокоды', icon: Ticket },
   { id: 'news', label: 'Новости', icon: Newspaper },
   { id: 'logs', label: 'Логи', icon: ScrollText },
@@ -36,29 +42,87 @@ onMounted(async () => {
   products.value = (pr as { products: typeof products.value }).products
 })
 
+async function fetchUsers() {
+  userLoading.value = true
+  try {
+    const res = await api.admin.users()
+    users.value = res.users
+  } catch (e) {
+    userMessage.value = `Ошибка: ${(e as Error).message}`
+  } finally {
+    userLoading.value = false
+  }
+}
+
+async function loadUsersIfNeeded() {
+  if (tab.value === 'users' && users.value.length === 0) {
+    await fetchUsers()
+  }
+}
+
 async function updatePrice(id: string, price: number) {
   await api.admin.updatePrice(id, price)
   const pr = await api.admin.products()
   products.value = (pr as { products: typeof products.value }).products
 }
 
-async function giveMoney() {
-  if (!moneyForm.value.steamId || !moneyForm.value.amount) {
-    moneyMessage.value = 'Заполните все поля'
-    return
+function userBanStatus(u: User): { label: string; color: string } {
+  if (u.banned) return { label: 'Бан', color: 'text-red-400' }
+  if (u.banUntil && new Date(u.banUntil).getTime() > Date.now()) {
+    const mins = Math.ceil((new Date(u.banUntil).getTime() - Date.now()) / 60000)
+    return { label: `Тбан ${mins}м`, color: 'text-orange-400' }
   }
-  
-  moneyLoading.value = true
+  return { label: 'Активен', color: 'text-green-400' }
+}
+
+function flash(msg: string) {
+  userMessage.value = msg
+  setTimeout(() => { userMessage.value = '' }, 4000)
+}
+
+async function saveBalance(u: User) {
+  const val = editingBalance.value[u.steamId]
+  if (val == null || val === '') return
+  const balance = Number(val)
+  if (isNaN(balance) || balance < 0) { flash('Некорректный баланс'); return }
   try {
-    await api.admin.giveMoney(moneyForm.value.steamId, moneyForm.value.amount, moneyForm.value.reason)
-    moneyMessage.value = `✅ Успешно выдано ${moneyForm.value.amount} монет игроку ${moneyForm.value.steamId}`
-    moneyForm.value = { steamId: '', amount: 0, reason: '' }
-    setTimeout(() => { moneyMessage.value = '' }, 5000)
-  } catch (err) {
-    moneyMessage.value = `❌ Ошибка: ${(err as Error).message}`
-  } finally {
-    moneyLoading.value = false
-  }
+    await api.admin.setBalance(u.steamId, balance)
+    u.balance = balance
+    delete editingBalance.value[u.steamId]
+    flash(`Баланс ${u.nickname} → ${balance} монет`)
+  } catch (e) { flash(`Ошибка: ${(e as Error).message}`) }
+}
+
+async function addBalance(u: User, amount: number) {
+  try {
+    const res = await api.admin.adjustBalance(u.steamId, amount) as { user: User }
+    u.balance = res.user.balance
+    flash(`${amount > 0 ? '+' : ''}${amount} → ${u.nickname} (итог: ${u.balance})`)
+  } catch (e) { flash(`Ошибка: ${(e as Error).message}`) }
+}
+
+async function banUser(u: User) {
+  try {
+    await api.admin.ban(u.steamId)
+    u.banned = true; u.banUntil = null
+    flash(`${u.nickname} забанен`)
+  } catch (e) { flash(`Ошибка: ${(e as Error).message}`) }
+}
+
+async function unbanUser(u: User) {
+  try {
+    await api.admin.unban(u.steamId)
+    u.banned = false; u.banUntil = null
+    flash(`${u.nickname} разбанен`)
+  } catch (e) { flash(`Ошибка: ${(e as Error).message}`) }
+}
+
+async function timebanUser(u: User) {
+  try {
+    const res = await api.admin.timeban(u.steamId, 10) as { user: User }
+    u.banUntil = res.user.banUntil
+    flash(`${u.nickname} забанен на 10 минут`)
+  } catch (e) { flash(`Ошибка: ${(e as Error).message}`) }
 }
 </script>
 
@@ -71,7 +135,7 @@ async function giveMoney() {
       <button v-for="t in tabs" :key="t.id"
         class="flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors"
         :class="tab === t.id ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-white'"
-        @click="tab = t.id"
+        @click="tab = t.id; loadUsersIfNeeded()"
       ><component :is="t.icon" class="h-4 w-4" /> {{ t.label }}</button>
     </div>
 
@@ -82,6 +146,64 @@ async function giveMoney() {
         <GlassCard><p class="text-xs uppercase text-gray-500">Пользователей</p><p class="mt-1 font-display text-3xl font-bold text-white">{{ stats.totalUsers }}</p></GlassCard>
       </div>
 
+      <div v-if="tab === 'users'" class="space-y-4">
+        <div class="flex items-center gap-3">
+          <div class="relative flex-1 max-w-md">
+            <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-600" />
+            <input v-model="userSearch" type="text" placeholder="Поиск по нику или Steam ID..." class="input !pl-10" />
+          </div>
+          <button class="btn-ghost" @click="fetchUsers" :disabled="userLoading">
+            {{ userLoading ? '...' : 'Обновить' }}
+          </button>
+        </div>
+
+        <div v-if="userMessage" class="rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-gray-300">{{ userMessage }}</div>
+
+        <div class="space-y-2">
+          <div v-for="u in filteredUsers" :key="u.steamId" class="glass flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-center gap-3">
+              <img :src="u.avatar" class="h-10 w-10 rounded-lg border border-white/10" alt="" />
+              <div>
+                <p class="font-semibold text-white">{{ u.nickname }}</p>
+                <p class="text-xs text-gray-600 font-mono">{{ u.steamId }}</p>
+              </div>
+              <span v-if="u.isAdmin" class="rounded bg-accent/20 px-2 py-0.5 text-xs font-bold text-accent">ADMIN</span>
+              <span :class="userBanStatus(u).color" class="text-xs font-semibold">{{ userBanStatus(u).label }}</span>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="flex items-center gap-1">
+                <input
+                  :value="editingBalance[u.steamId] ?? u.balance"
+                  @input="editingBalance[u.steamId] = ($event.target as HTMLInputElement).value"
+                  type="number"
+                  min="0"
+                  class="input !w-24 !py-1.5"
+                  placeholder="Баланс"
+                />
+                <button class="btn-primary !px-3 !py-1.5 text-xs" @click="saveBalance(u)">ОК</button>
+              </div>
+              <button class="btn-ghost !px-2 !py-1.5 text-xs" @click="addBalance(u, 100)" title="+100">+100</button>
+              <button class="btn-ghost !px-2 !py-1.5 text-xs" @click="addBalance(u, 500)" title="+500">+500</button>
+              <button class="btn-ghost !px-2 !py-1.5 text-xs" @click="addBalance(u, -100)" title="-100">-100</button>
+
+              <div class="mx-1 h-6 w-px bg-white/10"></div>
+
+              <button v-if="!u.banned && !(u.banUntil && new Date(u.banUntil).getTime() > Date.now())"
+                class="btn-ghost !px-3 !py-1.5 text-xs !border-orange-500/30 !text-orange-400 hover:!bg-orange-500/10"
+                @click="timebanUser(u)" title="Временный бан 10 мин">Тбан</button>
+              <button v-if="!u.banned"
+                class="btn-ghost !px-3 !py-1.5 text-xs !border-red-500/30 !text-red-400 hover:!bg-red-500/10"
+                @click="banUser(u)">Бан</button>
+              <button v-if="u.banned || (u.banUntil && new Date(u.banUntil).getTime() > Date.now())"
+                class="btn-ghost !px-3 !py-1.5 text-xs !border-green-500/30 !text-green-400 hover:!bg-green-500/10"
+                @click="unbanUser(u)">Разбан</button>
+            </div>
+          </div>
+          <p v-if="!filteredUsers.length && !userLoading" class="text-gray-600 text-center py-8">Нет пользователей</p>
+        </div>
+      </div>
+
       <div v-if="tab === 'products'" class="space-y-2">
         <div v-for="p in products" :key="p.id" class="glass flex items-center justify-between p-4">
           <span class="text-gray-300">{{ p.name }}</span>
@@ -89,55 +211,6 @@ async function giveMoney() {
             <input type="number" :value="p.price" class="input !w-24" @change="updatePrice(p.id, Number(($event.target as HTMLInputElement).value))" />
             <span class="text-xs text-gray-600">монет</span>
           </div>
-        </div>
-      </div>
-
-      <div v-if="tab === 'money'" class="glass max-w-2xl p-6">
-        <h3 class="text-xl font-bold text-white mb-6">Выдать деньги игроку</h3>
-        
-        <div class="space-y-4 mb-6">
-          <div>
-            <label class="block text-sm font-semibold text-gray-400 mb-2">Steam ID</label>
-            <input 
-              v-model="moneyForm.steamId" 
-              type="text" 
-              placeholder="76561198123456789"
-              class="w-full rounded-lg bg-white/5 border border-white/10 px-4 py-2 text-white placeholder-gray-600 focus:border-accent focus:outline-none"
-            />
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-semibold text-gray-400 mb-2">Сумма (монет)</label>
-              <input 
-                v-model.number="moneyForm.amount" 
-                type="number" 
-                placeholder="1000"
-                class="w-full rounded-lg bg-white/5 border border-white/10 px-4 py-2 text-white placeholder-gray-600 focus:border-accent focus:outline-none"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-gray-400 mb-2">Причина (опционально)</label>
-              <input 
-                v-model="moneyForm.reason" 
-                type="text" 
-                placeholder="Бонус, компенсация..."
-                class="w-full rounded-lg bg-white/5 border border-white/10 px-4 py-2 text-white placeholder-gray-600 focus:border-accent focus:outline-none"
-              />
-            </div>
-          </div>
-        </div>
-
-        <button 
-          @click="giveMoney"
-          :disabled="moneyLoading"
-          class="w-full rounded-lg bg-accent px-6 py-3 font-semibold text-graphite transition-all hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {{ moneyLoading ? 'Обработка...' : 'Выдать деньги' }}
-        </button>
-
-        <div v-if="moneyMessage" class="mt-4 rounded-lg border p-4" :class="moneyMessage.includes('✅') ? 'border-green-500/30 bg-green-500/10 text-green-400' : 'border-red-500/30 bg-red-500/10 text-red-400'">
-          {{ moneyMessage }}
         </div>
       </div>
 

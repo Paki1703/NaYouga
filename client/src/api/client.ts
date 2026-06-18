@@ -38,9 +38,11 @@ export const api = {
   user: {
     purchase: (productId: string) => request('/user/purchase', { method: 'POST', body: JSON.stringify({ productId }) }),
     promo: (code: string) => request('/user/promo', { method: 'POST', body: JSON.stringify({ code }) }),
-    topup: (amount: number) => request('/user/topup', { method: 'POST', body: JSON.stringify({ amount }) }),
     deliver: (itemId: string) => request('/user/deliver', { method: 'POST', body: JSON.stringify({ itemId }) }),
     openCase: (productId: string) => request<{ won: string; chance: number; user: import('@/types').User }>('/user/open-case', { method: 'POST', body: JSON.stringify({ productId }) }),
+  },
+  payments: {
+    create: (amount: number) => request('/payments/create', { method: 'POST', body: JSON.stringify({ amount }) }),
   },
   admin: {
     stats: () => request('/admin/stats'),
@@ -50,5 +52,11 @@ export const api = {
     news: () => request('/admin/news'),
     giveMoney: (steamId: string, amount: number, reason: string) => request('/admin/give-money', { method: 'POST', body: JSON.stringify({ steamId, amount, reason }) }),
     updatePrice: (id: string, price: number) => request(`/admin/products/${id}/price`, { method: 'PUT', body: JSON.stringify({ price }) }),
+    users: () => request<{ users: import('@/types').User[] }>('/admin/users'),
+    setBalance: (steamId: string, balance: number) => request(`/admin/users/${steamId}/balance`, { method: 'PUT', body: JSON.stringify({ balance }) }),
+    adjustBalance: (steamId: string, amount: number) => request(`/admin/users/${steamId}/adjust`, { method: 'POST', body: JSON.stringify({ amount }) }),
+    ban: (steamId: string) => request(`/admin/users/${steamId}/ban`, { method: 'POST' }),
+    unban: (steamId: string) => request(`/admin/users/${steamId}/unban`, { method: 'POST' }),
+    timeban: (steamId: string, minutes: number) => request(`/admin/users/${steamId}/timeban`, { method: 'POST', body: JSON.stringify({ minutes }) }),
   },
 }

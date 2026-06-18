@@ -10,6 +10,7 @@ const router = createRouter({
     { path: '/about', name: 'about', component: () => import('@/views/AboutView.vue') },
     { path: '/rules', name: 'rules', component: () => import('@/views/RulesView.vue') },
     { path: '/profile', name: 'profile', component: () => import('@/views/ProfileView.vue'), meta: { auth: true } },
+    { path: '/payment/success', name: 'payment-success', component: () => import('@/views/PaymentSuccessView.vue') },
     { path: '/admin', name: 'admin', component: () => import('@/views/AdminView.vue'), meta: { admin: true } },
   ],
   scrollBehavior: () => ({ top: 0 }),

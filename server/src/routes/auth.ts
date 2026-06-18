@@ -84,7 +84,11 @@ if (env.isDev) {
     )
     req.login(user, (err) => {
       if (err) return res.status(500).json({ error: 'Login failed' })
-      res.json({ user })
+      req.session!.steamId = steamId
+      req.session!.save((saveErr) => {
+        if (saveErr) return res.status(500).json({ error: 'Session save failed' })
+        res.json({ user })
+      })
     })
   })
 }

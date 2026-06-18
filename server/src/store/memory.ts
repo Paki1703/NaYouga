@@ -1,15 +1,78 @@
 import { v4 as uuid } from 'uuid'
 import type { User, PromoCode, AdminLog, Purchase } from '../types.js'
 import { products } from '../data/products.js'
+import { loadState, saveState, type PersistedState } from './persistence.js'
 
 const users = new Map<string, User>()
-const promocodes = new Map<string, PromoCode>([
-  ['NAYOUGA2026', { code: 'NAYOUGA2026', reward: 500, maxUses: 100, usedCount: 12, active: true }],
-  ['WELCOME100', { code: 'WELCOME100', reward: 100, maxUses: 1000, usedCount: 456, active: true }],
-  ['VIPTEST', { code: 'VIPTEST', reward: 1000, maxUses: 10, usedCount: 3, active: false }],
-])
+
+const seedPromocodes: PromoCode[] = [
+  { code: 'NAYOUGA2026', reward: 500, maxUses: 100, usedCount: 12, active: true },
+  { code: 'WELCOME100', reward: 100, maxUses: 1000, usedCount: 456, active: true },
+  { code: 'VIPTEST', reward: 1000, maxUses: 10, usedCount: 3, active: false },
+]
+const promocodes = new Map<string, PromoCode>(seedPromocodes.map((p) => [p.code, p]))
+
 const adminLogs: AdminLog[] = []
 const actionLogs: AdminLog[] = []
+const processedPaymentIds = new Set<string>()
+
+let initialized = false
+let saveScheduled = false
+
+async function persist() {
+  const state: PersistedState = {
+    version: 1,
+    users: Array.from(users.values()),
+    promocodes: Array.from(promocodes.values()),
+    adminLogs,
+    actionLogs,
+    processedPaymentIds: Array.from(processedPaymentIds),
+  }
+  await saveState(state)
+}
+
+function schedulePersist() {
+  if (saveScheduled) return
+  saveScheduled = true
+  queueMicrotask(async () => {
+    saveScheduled = false
+    try {
+      await persist()
+    } catch (e) {
+      console.error('Persist failed:', (e as Error).message)
+    }
+  })
+}
+
+export async function initStore() {
+  if (initialized) return
+  initialized = true
+  const state = await loadState()
+  if (!state) return
+
+  for (const u of state.users) {
+    if (u.banned === undefined) u.banned = false
+    if (u.banUntil === undefined) u.banUntil = null
+    users.set(u.steamId, u)
+  }
+
+  for (const p of state.promocodes) promocodes.set(p.code, p)
+
+  for (const l of state.adminLogs) adminLogs.push(l)
+  for (const l of state.actionLogs) actionLogs.push(l)
+  for (const id of state.processedPaymentIds) processedPaymentIds.add(id)
+
+  adminLogs.sort((a, b) => (a.date < b.date ? 1 : -1))
+  actionLogs.sort((a, b) => (a.date < b.date ? 1 : -1))
+
+  console.log(
+    `💾 Store loaded: ${users.size} users, ${promocodes.size} promocodes, ${processedPaymentIds.size} processed payments`,
+  )
+}
+
+export async function persistNow() {
+  await persist()
+}
 
 export function getOrCreateUser(steamId: string, nickname: string, avatar: string, isAdmin = false): User {
   let user = users.get(steamId)
@@ -20,6 +83,8 @@ export function getOrCreateUser(steamId: string, nickname: string, avatar: strin
       avatar,
       balance: 0,
       isAdmin,
+      banned: false,
+      banUntil: null,
       privileges: [],
       purchases: [],
       topups: [],
@@ -27,10 +92,12 @@ export function getOrCreateUser(steamId: string, nickname: string, avatar: strin
       ownedItems: [],
     }
     users.set(steamId, user)
+    schedulePersist()
   } else {
     user.nickname = nickname
     user.avatar = avatar
     user.isAdmin = isAdmin
+    schedulePersist()
   }
   return user
 }
@@ -43,6 +110,7 @@ export function updateUser(steamId: string, data: Partial<User>): User | undefin
   const user = users.get(steamId)
   if (!user) return undefined
   Object.assign(user, data)
+  schedulePersist()
   return user
 }
 
@@ -77,6 +145,7 @@ export function purchaseProduct(steamId: string, productId: string): { success: 
     serverId: 'main',
   })
 
+  schedulePersist()
   return { success: true, purchase }
 }
 
@@ -91,6 +160,7 @@ export function activatePromo(steamId: string, code: string): { success: boolean
   promo.usedCount++
   user.balance += promo.reward
   user.promocodes.push(code.toUpperCase())
+  schedulePersist()
   return { success: true, reward: promo.reward }
 }
 
@@ -99,6 +169,7 @@ export function topupBalance(steamId: string, amount: number): { success: boolea
   if (!user) return { success: false, error: 'Пользователь не найден' }
   user.balance += amount
   user.topups.unshift({ id: uuid(), amount, method: 'Демо-пополнение', date: new Date().toISOString() })
+  schedulePersist()
   return { success: true }
 }
 
@@ -108,6 +179,7 @@ export function giveMoneyToUser(steamId: string, amount: number, reason: string)
   if (amount <= 0) return { success: false, error: 'Сумма должна быть больше нуля' }
   user.balance += amount
   user.topups.unshift({ id: uuid(), amount, method: reason || 'Выдача админом', date: new Date().toISOString() })
+  schedulePersist()
   return { success: true, user }
 }
 
@@ -117,6 +189,7 @@ export function deliverItem(steamId: string, itemId: string): boolean {
   const item = user.ownedItems.find((i) => i.id === itemId)
   if (!item || item.deliveredAt) return false
   item.deliveredAt = new Date().toISOString()
+  schedulePersist()
   return true
 }
 
@@ -134,6 +207,8 @@ export function getActionLogs(): AdminLog[] {
 
 export function addActionLog(userId: string, action: string, details: string) {
   actionLogs.unshift({ id: uuid(), adminId: userId, action, details, date: new Date().toISOString() })
+  if (actionLogs.length > 1000) actionLogs.length = 1000
+  schedulePersist()
 }
 
 export function getAllLogs() {
@@ -144,6 +219,8 @@ export function getAllLogs() {
 
 export function addAdminLog(adminId: string, action: string, details: string) {
   adminLogs.unshift({ id: uuid(), adminId, action, details, date: new Date().toISOString() })
+  if (adminLogs.length > 1000) adminLogs.length = 1000
+  schedulePersist()
 }
 
 export function getSalesStats() {
@@ -155,4 +232,91 @@ export function getSalesStats() {
     byProduct[p.productName] = (byProduct[p.productName] || 0) + 1
   }
   return { totalRevenue, totalSales, byProduct, totalUsers: users.size }
+}
+
+export function isPaymentProcessed(paymentId: string): boolean {
+  return processedPaymentIds.has(paymentId)
+}
+
+export function markPaymentProcessed(paymentId: string) {
+  if (!paymentId) return
+  processedPaymentIds.add(paymentId)
+  schedulePersist()
+}
+
+// ─── Admin user management ───────────────────────────────────────────
+
+export function getAllUsers(): User[] {
+  const now = Date.now()
+  for (const u of users.values()) {
+    if (u.banUntil && new Date(u.banUntil).getTime() <= now) {
+      u.banUntil = null
+      schedulePersist()
+    }
+  }
+  return Array.from(users.values())
+}
+
+export function setUserBalance(steamId: string, balance: number): { success: boolean; error?: string; user?: User } {
+  const user = users.get(steamId)
+  if (!user) return { success: false, error: 'Пользователь не найден' }
+  if (balance < 0) return { success: false, error: 'Баланс не может быть отрицательным' }
+  user.balance = Math.round(balance)
+  schedulePersist()
+  return { success: true, user }
+}
+
+export function adjustBalance(steamId: string, amount: number): { success: boolean; error?: string; user?: User } {
+  const user = users.get(steamId)
+  if (!user) return { success: false, error: 'Пользователь не найден' }
+  const newBalance = user.balance + amount
+  if (newBalance < 0) return { success: false, error: 'Баланс не может быть отрицательным' }
+  user.balance = Math.round(newBalance)
+  schedulePersist()
+  return { success: true, user }
+}
+
+export function banUser(steamId: string): { success: boolean; error?: string; user?: User } {
+  const user = users.get(steamId)
+  if (!user) return { success: false, error: 'Пользователь не найден' }
+  if (user.isAdmin) return { success: false, error: 'Нельзя забанить администратора' }
+  user.banned = true
+  user.banUntil = null
+  schedulePersist()
+  return { success: true, user }
+}
+
+export function unbanUser(steamId: string): { success: boolean; error?: string; user?: User } {
+  const user = users.get(steamId)
+  if (!user) return { success: false, error: 'Пользователь не найден' }
+  user.banned = false
+  user.banUntil = null
+  schedulePersist()
+  return { success: true, user }
+}
+
+export function timebanUser(steamId: string, minutes: number): { success: boolean; error?: string; user?: User } {
+  const user = users.get(steamId)
+  if (!user) return { success: false, error: 'Пользователь не найден' }
+  if (user.isAdmin) return { success: false, error: 'Нельзя забанить администратора' }
+  user.banned = false
+  user.banUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString()
+  schedulePersist()
+  return { success: true, user }
+}
+
+export function isUserBanned(steamId: string): { banned: boolean; reason?: string } {
+  const user = users.get(steamId)
+  if (!user) return { banned: false }
+  if (user.banned) return { banned: true, reason: 'Аккаунт заблокирован' }
+  if (user.banUntil) {
+    const until = new Date(user.banUntil).getTime()
+    if (until > Date.now()) {
+      const mins = Math.ceil((until - Date.now()) / 60000)
+      return { banned: true, reason: `Временный бан: осталось ${mins} мин.` }
+    }
+    user.banUntil = null
+    schedulePersist()
+  }
+  return { banned: false }
 }

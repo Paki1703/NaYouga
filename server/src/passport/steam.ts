@@ -7,24 +7,55 @@ const STEAM_ID_FROM_IDENTIFIER = /steamcommunity\.com\/openid\/id\/(\d+)/
 const DEFAULT_AVATAR =
   'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfbeb6b0a0877bcc475630ad407e_full.jpg'
 
-async function fetchSteamPlayer(steamId: string) {
-  const url = new URL('https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/')
-  url.searchParams.set('key', env.steamApiKey)
-  url.searchParams.set('steamids', steamId)
+interface SteamProfile {
+  nickname: string
+  avatar: string
+}
 
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`Steam API ответил с кодом ${res.status}`)
+async function fetchSteamPlayer(steamId: string): Promise<SteamProfile> {
+  // 1. Try Steam Web API (if key configured)
+  if (env.steamApiKey) {
+    try {
+      const url = new URL('https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/')
+      url.searchParams.set('key', env.steamApiKey)
+      url.searchParams.set('steamids', steamId)
+
+      const res = await fetch(url)
+      if (res.ok) {
+        const data = (await res.json()) as {
+          response?: { players?: { steamid: string; personaname?: string; avatarfull?: string }[] }
+        }
+        const player = data.response?.players?.[0]
+        if (player) {
+          return {
+            nickname: player.personaname || 'Survivor',
+            avatar: player.avatarfull || DEFAULT_AVATAR,
+          }
+        }
+      }
+    } catch {
+      // fall through to XML
+    }
   }
 
-  const data = (await res.json()) as {
-    response?: { players?: { steamid: string; personaname?: string; avatarfull?: string }[] }
+  // 2. Fallback: Steam Community XML profile (no API key needed)
+  const xmlUrl = `https://steamcommunity.com/profiles/${steamId}/?xml=1`
+  const res = await fetch(xmlUrl, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NaYougaBot/1.0)' },
+  })
+  if (!res.ok) throw new Error(`Steam XML profile returned ${res.status}`)
+
+  const xml = await res.text()
+  const nickMatch = /<steamID><!\[CDATA\[([^\]]*)\]\]><\/steamID>/.exec(xml)
+  const avatarMatch = /<avatarFull><!\[CDATA\[([^\]]*)\]\]><\/avatarFull>/.exec(xml)
+  const nick = nickMatch?.[1]?.trim()
+
+  if (!nick) throw new Error('Steam XML не вернул никнейм — профиль может быть приватным')
+
+  return {
+    nickname: nick,
+    avatar: avatarMatch?.[1]?.trim() || DEFAULT_AVATAR,
   }
-  const player = data.response?.players?.[0]
-  if (!player) {
-    throw new Error('Steam API не вернул профиль игрока — проверьте STEAM_API_KEY')
-  }
-  return player
 }
 
 export function setupPassport() {
@@ -60,10 +91,20 @@ export function setupPassport() {
             }
 
             const steamId = match[1]
-            const player = await fetchSteamPlayer(steamId)
             const isAdmin = env.adminSteamIds.includes(steamId)
-            const avatar = player.avatarfull || DEFAULT_AVATAR
-            const nickname = player.personaname || 'Survivor'
+
+            // Profile (nickname/avatar) — пробуем Steam API, затем XML (без ключа).
+            // SteamID уже проверен OpenID — это и есть аутентификация.
+            let avatar = DEFAULT_AVATAR
+            let nickname = 'Survivor'
+            try {
+              const profile = await fetchSteamPlayer(steamId)
+              avatar = profile.avatar
+              nickname = profile.nickname
+            } catch (profileErr) {
+              const msg = profileErr instanceof Error ? profileErr.message : String(profileErr)
+              console.warn(`⚠️  Steam profile fetch failed: ${msg}. Auth continues with SteamID ${steamId}.`)
+            }
 
             const user = getOrCreateUser(steamId, nickname, avatar, isAdmin)
             done(null, user as Express.User)

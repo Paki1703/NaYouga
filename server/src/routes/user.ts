@@ -1,30 +1,23 @@
 import { Router } from 'express'
-import { requireAuth } from '../middleware/auth.js'
-import { activatePromo, deliverItem, getUser, purchaseProduct, topupBalance } from '../store/memory.js'
+import { requireAuth, requireNotBanned } from '../middleware/auth.js'
+import { promoLimiter } from '../middleware/rateLimit.js'
+import { activatePromo, deliverItem, getUser, purchaseProduct } from '../store/memory.js'
 import { products } from '../data/products.js'
 
 const router = Router()
 
-router.post('/purchase', requireAuth, (req, res) => {
+router.post('/purchase', requireNotBanned, (req, res) => {
   const { productId } = req.body
   const result = purchaseProduct(req.session.steamId!, productId)
   if (!result.success) return res.status(400).json({ error: result.error })
   res.json({ purchase: result.purchase, user: getUser(req.session.steamId!) })
 })
 
-router.post('/promo', requireAuth, (req, res) => {
+router.post('/promo', promoLimiter, requireNotBanned, (req, res) => {
   const { code } = req.body
-  const result = activatePromo(req.session.steamId!, code)
+  const result = activatePromo(req.session.steamId!, String(code ?? '').slice(0, 64))
   if (!result.success) return res.status(400).json({ error: result.error })
   res.json({ reward: result.reward, user: getUser(req.session.steamId!) })
-})
-
-router.post('/topup', requireAuth, (req, res) => {
-  const { amount } = req.body
-  if (!amount || amount < 1) return res.status(400).json({ error: 'Некорректная сумма' })
-  const result = topupBalance(req.session.steamId!, Number(amount))
-  if (!result.success) return res.status(400).json({ error: result.error })
-  res.json({ user: getUser(req.session.steamId!) })
 })
 
 router.post('/deliver', requireAuth, (req, res) => {
@@ -34,7 +27,7 @@ router.post('/deliver', requireAuth, (req, res) => {
   res.json({ user: getUser(req.session.steamId!) })
 })
 
-router.post('/open-case', requireAuth, (req, res) => {
+router.post('/open-case', requireNotBanned, (req, res) => {
   const { productId } = req.body
   const product = products.find((p) => p.id === productId && p.category === 'cases')
   if (!product?.probabilities) return res.status(400).json({ error: 'Не кейс' })

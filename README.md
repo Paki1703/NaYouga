@@ -7,10 +7,16 @@
 | Frontend | Backend |
 |----------|---------|
 | Vue 3 + TypeScript | Node.js + Express + TypeScript |
-| Vite | In-memory store (готово к замене на БД) |
-| Tailwind CSS | Session auth (Steam-ready) |
-| Pinia, Vue Router | REST API |
-| Chart.js | |
+| Vite | File-persisted store (атомарный JSON, переживает рестарт) |
+| Tailwind CSS | Session auth (Steam OpenID via Passport) |
+| Pinia, Vue Router | REST API, rate-limiting, YooKassa webhook |
+
+## Безопасность
+
+- Вебхук YooKassa проверяет HTTP Basic auth (`shopId:secret`) и идемпотентен (дубли не начисляют баланс дважды).
+- Rate-limit: общий на `/api`, усиленный на `/auth`, `/payments`, `/user/promo`.
+- В production `SESSION_SECRET` обязан быть задан (иначе сервер не стартует).
+- Логируются только мутации (POST/PUT/PATCH/DELETE), чтения не засоряют лог.
 
 ## Запуск
 
@@ -93,7 +99,8 @@ client/          Vue 3 + TypeScript frontend
 server/          Express API
   src/data/      Товары, серверы, правила, новости
   src/routes/    API endpoints
-  src/store/     In-memory хранилище
+  src/store/     Хранилище + file-persistence (data/store.json)
+  src/middleware/ auth, rate-limit, logger
 ```
 
 ## Настройка
@@ -102,10 +109,10 @@ server/          Express API
 - Серверы: `server/src/data/servers.ts`
 - Название: `client/src/config.ts`
 - Discord/IP: `client/src/config.ts`
+- Данные магазина сохраняются в `server/data/store.json` (или `DATA_DIR`).
 
 ## Следующие шаги
 
-1. PostgreSQL / MongoDB вместо in-memory
-2. ЮKassa для оплаты
-3. Steam Server Query для мониторинга
-4. Выдача предметов через мод на сервере
+1. PostgreSQL при росте нагрузки (file-store хорошо до тысяч пользователей)
+2. Steam Server Query для реального мониторинга вместо мока
+3. Выдача предметов через мод на сервере DayZ

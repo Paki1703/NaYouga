@@ -60,6 +60,8 @@ export interface User {
   avatar: string
   balance: number
   isAdmin: boolean
+  banned: boolean
+  banUntil: string | null
   privileges: { name: string; expiresAt: string }[]
   purchases: Purchase[]
   topups: Topup[]

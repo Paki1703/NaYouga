@@ -33,9 +33,13 @@ async function activatePromo() {
 async function topup() {
   error.value = ''; message.value = ''
   try {
-    const res = await api.user.topup(topupAmount.value) as { user: typeof auth.user }
-    auth.setUser(res.user!)
-    message.value = `Баланс пополнен на ${topupAmount.value} монет (демо)`
+    const res = await api.payments.create(topupAmount.value) as any
+    const url = res.confirmationUrl || (res.payment && res.payment.confirmation && res.payment.confirmation.confirmation_url)
+    if (url) {
+      window.location.href = url
+    } else {
+      error.value = 'Не удалось создать платёж'
+    }
   } catch (e) { error.value = (e as Error).message }
 }
 
@@ -67,7 +71,7 @@ async function deliver(itemId: string) {
           <input v-model.number="topupAmount" type="number" class="input" min="100" step="100" />
           <button class="btn-primary shrink-0" @click="topup">Пополнить</button>
         </div>
-        <p class="mt-2 text-xs text-gray-600">Демо-режим. Подключите ЮKassa для реальных платежей.</p>
+        <p class="mt-2 text-xs text-gray-600">Оплата через ЮKassa. Введите сумму в рублях.</p>
       </GlassCard>
       <GlassCard>
         <h3 class="font-display text-sm font-bold uppercase text-gray-400">Промокод</h3>
